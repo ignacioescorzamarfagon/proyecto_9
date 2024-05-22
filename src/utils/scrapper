@@ -1,0 +1,122 @@
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+
+const starwarsLocationsArray = [];
+
+const scrapper = async (url) => {
+  try {
+    const browser = await puppeteer.launch({ headless: false }); //El modo headless se refiere a ejecutar el navegador sin interfaz grafica.
+
+    const page = await browser.newPage(); //Abrimos una página del navegador
+    await page.goto(url, {
+      waitUntil: 'domcontentloaded'
+    }); //Vamos a la url
+    console.log('Esperando');
+
+    // Recogemos el título de la página y lo imprimimos en consola
+    const pageTitle = await page.title();
+    console.log('Title of the page:', pageTitle);
+
+    await page.setViewport({ width: 1500, height: 1024 });
+
+    // Hacemos clic en el enlace utilizando un selector más específico
+    await page.waitForSelector('ul.drop-container li:nth-child(5) a');
+    await page.$eval('ul.drop-container li:nth-child(5) a', (el) => el.click());
+
+    console.log(
+      'Esperando a que se cargue la nueva página después del clic...'
+    );
+
+    let showMoreButton;
+
+    // Realizamos un bucle mientras el botón "show_more" esté disponible
+    while (true) {
+      try {
+        // Buscamos el botón "show_more"
+        showMoreButton = await page.$('.show_more');
+
+        // Si el botón no está disponible, salimos del bucle
+        if (!showMoreButton) {
+          console.log('El botón "show_more" ya no está disponible.');
+          break;
+        }
+
+        // Hacemos clic en el botón "show_more"
+        await showMoreButton.click();
+        console.log(
+          'Se hizo clic en el botón "show_more". Esperando a que se cargue más contenido...'
+        );
+
+        // Esperamos un tiempo antes de continuar para cargar contenido
+        await new Promise((resolve) => setTimeout(resolve, 2000)); // Esperamos 2 segundos
+      } catch (error) {
+        //Si el error contiene la cadena 'Node is either not clickable or not an Element' ya no hay botón Show more
+        if (
+          error
+            .toString()
+            .includes('Node is either not clickable or not an Element')
+        ) {
+          console.log('El botón "show_more" ya no está disponible.');
+          break;
+        } else {
+          console.error('Ocurrió un error:', error);
+          break;
+        }
+      }
+    }
+
+    const arrayDivs = await page.$$('.active .building-block-wrapper');
+
+    for (const starWarsLocationDiv of arrayDivs) {
+      let locationTitle = await starWarsLocationDiv.$eval(
+        '.long-title',
+        (el) => el.textContent
+      );
+      let url = await starWarsLocationDiv.$eval('.aspect a', (el) => el.href);
+      let img = await starWarsLocationDiv.$eval('.thumb', (el) => el.src);
+      const starWarsLocation = {
+        locationTitle,
+        url,
+        img
+      };
+      starwarsLocationsArray.push(starWarsLocation);
+      console.log(
+        'Se ha añadido el nombre de la localización ' +
+          locationTitle +
+          ', la url ' +
+          url +
+          ' y la imagen ' +
+          img
+      );
+    }
+    write(starwarsLocationsArray); //Escribimos en el fichero json con los datos recogidos
+  } catch (error) {
+    // Manejamos cualquier error que ocurra de manera más detallada
+    console.error('Ha ocurrido un error:', error);
+  }
+};
+
+const write = (starwarsLocationsArray) => {
+  console.log('Escribiendo el archivo');
+  try {
+    if (starwarsLocationsArray.length > 0) {
+      fs.writeFile(
+        'starWarsLocations.json',
+        JSON.stringify(starwarsLocationsArray),
+        (err) => {
+          if (err) {
+            console.error('Error al escribir el archivo:', err);
+          } else {
+            console.log('Archivo escrito correctamente');
+          }
+        }
+      );
+    } else {
+      console.error('No hay datos para escribir en el archivo');
+    }
+  } catch (error) {
+    console.error('Error inesperado al escribir el archivo:', error);
+  }
+};
+
+module.exports = { scrapper };
